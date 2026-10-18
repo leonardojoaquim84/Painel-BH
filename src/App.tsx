@@ -513,9 +513,9 @@ export default function App() {
           </div>
         )}
 
-        {/* Abas Principais: RIO (Padrão) e TODOS */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1">
-          <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg">
+        {/* Segunda Linha da Página: Abas RIO/TODOS à esquerda, e à direita: CNF-RIO + botões PASSE AZUL e PASSE GOL */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-1.5">
+          <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -523,7 +523,7 @@ export default function App() {
                 setSelectedAirport('ALL');
                 setSelectedAirline('ALL');
               }}
-              className={`px-3.5 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
+              className={`px-3 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
                 mainTab === 'RIO'
                   ? 'bg-sky-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -538,7 +538,7 @@ export default function App() {
                 setMainTab('TODOS');
                 setSelectedAirline('ALL');
               }}
-              className={`px-3.5 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
+              className={`px-3 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
                 mainTab === 'TODOS'
                   ? 'bg-sky-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -548,9 +548,33 @@ export default function App() {
             </button>
           </div>
 
-          <span className="text-[11px] font-semibold text-slate-500">
-            {mainTab === 'RIO' ? 'Confins (CNF) → Galeão & Santos Dumont' : 'Painel de Todas as Decolagens de Confins (CNF)'}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-black text-slate-700 font-mono tracking-tight mr-0.5">
+              CNF-RIO
+            </span>
+
+            <a
+              href="https://passelivre.voeazul.com.br/login"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md text-white bg-[#002f6c] hover:bg-[#00214c] transition-all shadow-xs shrink-0 cursor-pointer"
+              title="Acessar Passe Livre Azul"
+            >
+              <span>PASSE AZUL</span>
+              <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+            </a>
+
+            <a
+              href="https://passelivre.voegol.com.br/Login.aspx"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-md text-white bg-[#ff5a00] hover:bg-[#e04f00] transition-all shadow-xs shrink-0 cursor-pointer"
+              title="Acessar Passe Livre GOL"
+            >
+              <span>PASSE GOL</span>
+              <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+            </a>
+          </div>
         </div>
 
         {/* Painel Principal de Voos */}
@@ -721,6 +745,15 @@ export default function App() {
               className="hover:text-sky-700 inline-flex items-center gap-1 transition-colors"
             >
               Dólar Hoje <ExternalLink className="w-2.5 h-2.5" />
+            </a>
+            <span>·</span>
+            <a
+              href="https://aviationweather.gov"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-sky-700 inline-flex items-center gap-1 transition-colors"
+            >
+              METAR NOAA <ExternalLink className="w-2.5 h-2.5" />
             </a>
           </div>
         </div>

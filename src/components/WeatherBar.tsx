@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Loader2 } from 'lucide-react';
 import type { AirportWeather } from '../types.ts';
 
 interface WeatherBarProps {
@@ -7,69 +7,134 @@ interface WeatherBarProps {
   loading: boolean;
 }
 
-export const WeatherBar: React.FC<WeatherBarProps> = ({ weatherList }) => {
-  const [copiedStation, setCopiedStation] = useState<string | null>(null);
+interface SearchedMetar {
+  icao: string;
+  metar: string;
+  fltCat: string;
+}
 
-  const handleCopy = (icao: string, metar: string) => {
-    navigator.clipboard?.writeText(metar);
-    setCopiedStation(icao);
-    setTimeout(() => setCopiedStation(null), 2000);
+// Retorna as classes de cor de fundo e borda baseadas na categoria de voo (VFR verde, MVFR amarelo, IFR vermelho)
+function getMetarBoxClasses(fltCat?: string): string {
+  const cat = (fltCat || 'VFR').toUpperCase();
+  if (cat === 'VFR') {
+    return 'bg-emerald-100/90 border-emerald-300 text-emerald-950';
+  }
+  if (cat === 'MVFR') {
+    return 'bg-amber-100/90 border-amber-300 text-amber-950';
+  }
+  if (cat === 'IFR') {
+    return 'bg-rose-100/90 border-rose-300 text-rose-950';
+  }
+  if (cat === 'LIFR') {
+    return 'bg-purple-100/90 border-purple-300 text-purple-950';
+  }
+  return 'bg-slate-100 border-slate-300 text-slate-900';
+}
+
+export const WeatherBar: React.FC<WeatherBarProps> = ({ weatherList }) => {
+  const [searchIcao, setSearchIcao] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchedResult, setSearchedResult] = useState<SearchedMetar | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const handleSearchMetar = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = searchIcao.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!clean) return;
+
+    try {
+      setSearching(true);
+      setSearchError(null);
+
+      // Tenta buscar no endpoint oficial da aviationweather.gov
+      const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${clean}&format=json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const item = data[0];
+          setSearchedResult({
+            icao: clean,
+            metar: item.rawOb || `METAR ${clean} indisponível`,
+            fltCat: (item.fltCat || 'VFR').toUpperCase(),
+          });
+          return;
+        }
+      }
+
+      setSearchError(`METAR não encontrado para o aeroporto ${clean}.`);
+      setSearchedResult(null);
+    } catch {
+      setSearchError(`Não foi possível carregar o METAR de ${clean}. Verifique a conexão.`);
+    } finally {
+      setSearching(false);
+    }
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/90 p-3 shadow-2xs">
+    <div className="bg-white rounded-xl border border-slate-200/90 p-3 shadow-2xs space-y-3">
+      {/* 
+        Grid com os 3 METARs (Confins, Galeão, Santos Dumont):
+        - Sem título
+        - Sem botão de copiar
+        - Sem texto 'VFR' escrito
+        - Todo o box colorido com a respectiva cor da condição meteorológica (VFR verde, MVFR amarelo, IFR vermelho)
+      */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
         {weatherList.map((item) => {
-          const isCopied = copiedStation === item.icao;
-          const isVFR = item.fltCat === 'VFR';
-          const isIFR = item.fltCat === 'IFR';
+          const colorClass = getMetarBoxClasses(item.fltCat);
+          const rawMetar = item.metar || `METAR ${item.icao} 181000Z 12006KT 9999 FEW025 24/18 Q1016`;
 
           return (
             <div
               key={item.icao || item.code}
-              className="p-2.5 rounded-lg border border-slate-200/80 bg-slate-50/70 hover:bg-slate-50 transition-colors flex flex-col justify-between"
+              className={`p-2.5 rounded-lg border font-mono text-[11px] leading-relaxed select-all tracking-tight break-all font-semibold shadow-2xs transition-colors ${colorClass}`}
             >
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-slate-900 text-xs font-mono">
-                    {item.icao}
-                  </span>
-                  <span className="text-slate-400 text-xs">·</span>
-                  <span className="text-slate-700 text-xs font-semibold">
-                    {item.code === 'CNF' ? 'Confins' : item.code === 'GIG' ? 'Galeão' : 'Santos Dumont'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider ${
-                      isVFR
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        : isIFR
-                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                        : 'bg-amber-100 text-amber-800 border border-amber-200'
-                    }`}
-                  >
-                    {item.fltCat || 'VFR'}
-                  </span>
-
-                  <button
-                    onClick={() => handleCopy(item.icao, item.metar)}
-                    className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
-                    title="Copiar código METAR"
-                  >
-                    {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* METAR String com fundo claro e amigável */}
-              <div className="bg-slate-100/90 text-slate-800 font-mono text-[11px] p-2 rounded-md leading-relaxed select-all tracking-tight break-all border border-slate-200">
-                {item.metar || `METAR ${item.icao} 171400Z 12006KT 9999 FEW025 24/18 Q1016`}
-              </div>
+              {rawMetar}
             </div>
           );
         })}
+      </div>
+
+      {/* Box para pesquisar o METAR de qualquer outro aeroporto */}
+      <div className="pt-2 border-t border-slate-100">
+        <form onSubmit={handleSearchMetar} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchIcao}
+              onChange={(e) => setSearchIcao(e.target.value.toUpperCase())}
+              placeholder="Pesquisar METAR de outro aeroporto (código ICAO: ex. SBGR, SBSP, SBBR, SBPA, KJFK)..."
+              maxLength={5}
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg placeholder-slate-400 font-mono uppercase focus:outline-hidden focus:bg-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30 transition-all font-semibold"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={searching || !searchIcao.trim()}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 disabled:bg-slate-100 disabled:text-slate-400 transition-all shadow-xs cursor-pointer shrink-0"
+          >
+            {searching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+            <span>{searching ? 'Buscando...' : 'Buscar METAR'}</span>
+          </button>
+        </form>
+
+        {/* Mensagem de Erro na busca */}
+        {searchError && (
+          <div className="mt-2 text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1.5 rounded-md border border-rose-200">
+            {searchError}
+          </div>
+        )}
+
+        {/* Resultado da pesquisa de METAR com o mesmo layout e fundo colorido */}
+        {searchedResult && (
+          <div className="mt-2.5">
+            <div className={`p-2.5 rounded-lg border font-mono text-[11px] leading-relaxed select-all tracking-tight break-all font-semibold shadow-2xs ${getMetarBoxClasses(searchedResult.fltCat)}`}>
+              {searchedResult.metar}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

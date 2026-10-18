@@ -76,20 +76,20 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
       isNotified ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/90'
     }`}>
       {/* 
-        Linha Única para a aba TODOS contendo exatamente na ordem:
+        Linha Única para a aba TODOS:
         1. Hora
-        2. Cia
-        3. Destino
-        4. Portão
-        5. Status
+        2. Cia (Apenas logotipo e número do voo, sem nome da cia)
+        3. Destino com espaçamento reduzido
+        4. Portão de embarque com cor marrom bem claro
+        5. Status do voo
       */}
       <div 
         onClick={() => setExpanded(!expanded)}
-        className="px-2.5 sm:px-3 py-1.5 sm:py-2 flex items-center justify-between gap-2 sm:gap-3 cursor-pointer select-none text-xs overflow-x-auto whitespace-nowrap"
+        className="px-2 sm:px-3 py-1.5 flex items-center justify-between gap-1.5 sm:gap-2 cursor-pointer select-none text-xs overflow-x-auto whitespace-nowrap"
       >
-        <div className="flex items-center gap-2.5 sm:gap-3.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* 1. Hora */}
-          <div className="w-14 sm:w-16 shrink-0 flex items-center gap-1 font-bold text-slate-900 font-mono tabular-nums text-xs sm:text-sm">
+          <div className="shrink-0 flex items-center gap-1 font-black text-slate-900 font-mono tabular-nums text-xs sm:text-sm">
             <span>{flight.scheduled}</span>
             {flight.dateLabel && flight.dateLabel !== 'Hoje' && (
               <span className="text-[8px] font-bold text-sky-700 bg-sky-50 px-0.5 rounded border border-sky-100">
@@ -98,13 +98,13 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
             )}
           </div>
 
-          {/* 2. Cia */}
-          <div className="flex items-center gap-1.5 w-28 sm:w-32 shrink-0">
+          {/* 2. Cia (Logotipo e número do voo, sem o nome da cia) */}
+          <div className="flex items-center gap-1 shrink-0">
             {flight.companyLogoUrl ? (
               <img
                 src={flight.companyLogoUrl}
                 alt={flight.companyName}
-                className="w-4 h-4 object-contain rounded bg-white p-0.5 border border-slate-100 shrink-0"
+                className="w-4 h-4 object-contain rounded bg-white p-0.5 border border-slate-200 shrink-0"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
@@ -115,28 +115,25 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
                 <Plane className="w-2.5 h-2.5" />
               </div>
             )}
-            <span className="font-bold text-slate-900 truncate text-xs">
-              {flight.companyName}
-            </span>
-            <span className="font-mono text-slate-500 text-[11px] font-semibold">
+            <span className="font-mono text-slate-900 font-black text-xs tabular-nums">
               {flight.flight}
             </span>
           </div>
 
-          {/* 3. Destino */}
-          <div className="w-36 sm:w-48 shrink-0 truncate">
-            <span className="font-semibold text-slate-800 text-xs">
+          {/* 3. Destino logo ao lado com espaçamento reduzido */}
+          <div className="shrink-0 max-w-[140px] sm:max-w-[220px] truncate">
+            <span className="font-semibold text-slate-800 text-xs truncate">
               {flight.destination}
             </span>
           </div>
 
-          {/* 4. Portão (só o número) */}
-          <div className="w-10 sm:w-12 shrink-0 flex items-center justify-center font-mono font-bold text-slate-800 text-[11px] bg-slate-100/90 px-1 py-0.5 rounded border border-slate-200/80">
+          {/* 4. Portão de embarque com cor marrom bem claro */}
+          <div className="shrink-0 flex items-center justify-center font-mono font-bold text-[11px] bg-[#fbf4eb] text-[#854d0e] border border-[#ebd9c6] px-1.5 py-0.5 rounded">
             {gateNumber}
           </div>
 
-          {/* 5. Status */}
-          <div className="w-24 sm:w-30 shrink-0 flex items-center">
+          {/* 5. Status do voo */}
+          <div className="shrink-0 flex items-center">
             {getStatusBadge()}
           </div>
         </div>
@@ -174,9 +171,13 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
         </div>
       </div>
 
-      {/* Detalhes Expandidos (opcional ao clicar) */}
+      {/* Detalhes Expandidos */}
       {expanded && (
         <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="text-slate-400">Companhia:</span>{' '}
+            <span className="font-semibold text-slate-800">{flight.companyName}</span>
+          </div>
           <div>
             <span className="text-slate-400">Origem:</span>{' '}
             <span className="font-semibold text-slate-800">Confins (CNF)</span>

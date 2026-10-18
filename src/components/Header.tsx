@@ -76,39 +76,17 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Canto Direito: Botões PASSE AZUL, PASSE GOL e FLIGHT RADAR */}
+          {/* Canto Direito: Apenas o botão FLIGHT RADAR sozinho na primeira linha */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <a
-              href="https://passelivre.voeazul.com.br/login"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg text-white bg-[#002f6c] hover:bg-[#00214c] transition-all shadow-xs shrink-0 cursor-pointer"
-              title="Acessar Passe Livre Azul"
-            >
-              <span>PASSE AZUL</span>
-              <ExternalLink className="w-2.5 h-2.5 opacity-80" />
-            </a>
-
-            <a
-              href="https://passelivre.voegol.com.br/Login.aspx"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg text-white bg-[#ff5a00] hover:bg-[#e04f00] transition-all shadow-xs shrink-0 cursor-pointer"
-              title="Acessar Passe Livre GOL"
-            >
-              <span>PASSE GOL</span>
-              <ExternalLink className="w-2.5 h-2.5 opacity-80" />
-            </a>
-
             <a
               href="https://apps.apple.com/br/app/flightradar24-flight-tracker/id382233851"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg text-slate-900 bg-amber-300 hover:bg-amber-400 transition-all shadow-xs shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-slate-900 bg-amber-300 hover:bg-amber-400 active:bg-amber-500 transition-all shadow-xs shrink-0 cursor-pointer"
               title="Abrir app Flightradar24"
             >
               <span>FLIGHT RADAR</span>
-              <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+              <ExternalLink className="w-3 h-3 opacity-80" />
             </a>
           </div>
         </div>
