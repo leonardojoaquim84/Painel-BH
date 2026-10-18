@@ -53,8 +53,8 @@ async function fetchDollarRate(): Promise<DollarData> {
     return cachedDollar.data;
   }
 
-  let rate = '5,0640';
-  let numericRate = 5.064;
+  let rate = '5,06';
+  let numericRate = 5.06;
   let variation = '0,00%';
   let source = 'https://www.dolarhoje.net.br';
 
@@ -81,8 +81,11 @@ async function fetchDollarRate(): Promise<DollarData> {
 
       const found = tableMatch?.[1] || inputMatch?.[1] || boldMatch?.[1];
       if (found) {
-        rate = found.trim();
-        numericRate = parseFloat(rate.replace('.', '').replace(',', '.'));
+        const rawNum = parseFloat(found.trim().replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(rawNum) && rawNum > 0) {
+          numericRate = rawNum;
+          rate = rawNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
       }
 
       // Check variation
@@ -104,7 +107,7 @@ async function fetchDollarRate(): Promise<DollarData> {
         const j = await fallbackRes.json();
         if (j.USDBRL?.bid) {
           numericRate = parseFloat(j.USDBRL.bid);
-          rate = numericRate.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+          rate = numericRate.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           variation = (parseFloat(j.USDBRL.pctChange || '0')).toFixed(2) + '%';
           source = 'awesomeapi (backup para dolarhoje.net.br)';
         }
@@ -177,14 +180,11 @@ async function fetchBhAirportFlights(fresh = false): Promise<{ flights: FlightIt
         destCode = 'SDU';
         destCity = 'Rio de Janeiro - Santos Dumont (SDU)';
       } else if (destLower.includes('rio de janeiro')) {
-        // Fallback detection
         destCode = 'GIG';
         destCity = destinationStr;
-      }
-
-      // Filter only Galeão or Santos Dumont flights as requested by the user
-      if (destCode === 'OTHER') {
-        continue;
+      } else {
+        destCode = 'OTHER';
+        destCity = destinationStr || 'Destino Nacional/Internacional';
       }
 
       // Parse departure timestamp

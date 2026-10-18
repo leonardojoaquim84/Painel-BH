@@ -10,7 +10,8 @@ import {
   BellRing, 
   ExternalLink, 
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  Filter
 } from 'lucide-react';
 import type { FlightItem, DollarQuote, AirportWeather, FlightStatusAlert, DestinationAirport } from './types.ts';
 import { formatLiveTime, formatLiveDate } from './utils/time.ts';
@@ -19,7 +20,28 @@ import { Header } from './components/Header.tsx';
 import { WeatherBar } from './components/WeatherBar.tsx';
 import { FlightFilters } from './components/FlightFilters.tsx';
 import { FlightRow } from './components/FlightRow.tsx';
+import { AllFlightsRow } from './components/AllFlightsRow.tsx';
 import { NotificationsModal } from './components/NotificationsModal.tsx';
+
+// Remove aeronaves que já decolaram
+function isFlightNotDeparted(flight: FlightItem, currentTimeMs: number): boolean {
+  const s = (flight.status || '').toLowerCase().trim();
+  if (
+    s.includes('decolou') ||
+    s.includes('partiu') ||
+    s.includes('finalizado') ||
+    s.includes('encerrado')
+  ) {
+    return false;
+  }
+  // Se o horário previsto já passou há mais de 10 minutos e o status não é de atraso ou embarque
+  if (flight.departureTimestamp && currentTimeMs - flight.departureTimestamp > 10 * 60 * 1000) {
+    if (!s.includes('atras') && !s.includes('embarque') && !s.includes('aguardando')) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export default function App() {
   // Live clock
@@ -34,12 +56,16 @@ export default function App() {
   // Flights state
   const [flights, setFlights] = useState<FlightItem[]>([]);
   const [flightsLoading, setFlightsLoading] = useState(true);
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<string | null>(null);
-  const [flightsSource, setFlightsSource] = useState<string>('bh-airport.com.br');
 
   // Weather state
   const [weatherList, setWeatherList] = useState<AirportWeather[]>([]);
   const [weatherLoading, setWeatherLoading] = useState(true);
+
+  // Main navigation tab: Sempre abre na aba RIO por padrão
+  const [mainTab, setMainTab] = useState<'RIO' | 'TODOS'>('RIO');
+
+  // Auto-refresh countdown (10 segundos)
+  const [autoRefreshCountdown, setAutoRefreshCountdown] = useState(10);
 
   // Notifications & tracking state
   const [monitoredFlightIds, setMonitoredFlightIds] = useState<string[]>(() => {
@@ -84,7 +110,7 @@ export default function App() {
   // Browser notification permission
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('default');
 
-  // Filtering states: TODOS RIO, GIG, SDU e CIA
+  // Filtering states para a aba RIO (TODOS RIO, GIG, SDU) e CIA
   const [selectedAirport, setSelectedAirport] = useState<'ALL' | DestinationAirport>('ALL');
   const [selectedAirline, setSelectedAirline] = useState('ALL');
   const [showNext12HoursOnly, setShowNext12HoursOnly] = useState(true);
@@ -98,7 +124,7 @@ export default function App() {
     setToastMessage(msg);
     toastTimeoutRef.current = window.setTimeout(() => {
       setToastMessage(null);
-    }, 4500);
+    }, 4000);
   }, []);
 
   // Update clock every second
@@ -112,38 +138,60 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Check browser notification support
+  // Check browser notification support safely
   useEffect(() => {
-    if ('Notification' in window) {
-      setBrowserPermission(Notification.permission);
-    } else {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && window.Notification) {
+        setBrowserPermission(Notification.permission);
+      } else {
+        setBrowserPermission('unsupported');
+      }
+    } catch {
       setBrowserPermission('unsupported');
     }
   }, []);
 
   const handleRequestPermission = async () => {
-    if ('Notification' in window) {
-      try {
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && window.Notification) {
         const perm = await Notification.requestPermission();
         setBrowserPermission(perm);
         if (perm === 'granted') {
-          showToast('Permissão para notificações do navegador ativada com sucesso!');
+          showToast('Permissão para notificações ativada com sucesso!');
         }
-      } catch (err) {
-        console.warn('Error requesting notification permission:', err);
       }
+    } catch (err) {
+      console.warn('Error requesting notification permission:', err);
     }
   };
 
-  // Fetch Dollar
+  // Fetch Dollar com verificação de JSON e fallback para AwesomeAPI direto no browser
   const fetchDollar = useCallback(async () => {
     try {
       setDollarLoading(true);
       const res = await fetch('/api/dollar');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const j = await res.json();
         if (j.data) {
           setDollar(j.data);
+          return;
+        }
+      }
+
+      // Fallback direto do navegador se o endpoint /api/dollar não responder JSON
+      const fallbackRes = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+      if (fallbackRes.ok) {
+        const j = await fallbackRes.json();
+        if (j.USDBRL?.bid) {
+          const num = parseFloat(j.USDBRL.bid);
+          setDollar({
+            rate: num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            numericRate: num,
+            source: 'AwesomeAPI (direto)',
+            updatedAt: new Date().toISOString(),
+            variation: (parseFloat(j.USDBRL.pctChange || '0')).toFixed(2) + '%',
+          });
         }
       }
     } catch (err) {
@@ -153,15 +201,17 @@ export default function App() {
     }
   }, []);
 
-  // Fetch Weather
+  // Fetch Weather com verificação de JSON
   const fetchWeather = useCallback(async () => {
     try {
       setWeatherLoading(true);
       const res = await fetch('/api/weather');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const j = await res.json();
-        if (j.data) {
+        if (j.data && Array.isArray(j.data)) {
           setWeatherList(j.data);
+          return;
         }
       }
     } catch (err) {
@@ -171,18 +221,17 @@ export default function App() {
     }
   }, []);
 
-  // Fetch Flights & Detect Status Changes for Monitored Flights
+  // Fetch Flights & Detect Status Changes for Monitored Flights com verificação de JSON
   const fetchFlights = useCallback(async (fresh = false) => {
     try {
       setFlightsLoading(true);
       const url = `/api/flights${fresh ? '?fresh=true' : ''}`;
       const res = await fetch(url);
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const j = await res.json();
         const incomingFlights: FlightItem[] = j.data || [];
         setFlights(incomingFlights);
-        setFlightsSource(j.source || 'bh-airport.com.br');
-        setLastUpdatedTime(formatLiveTime());
 
         // Status change detection
         const updatedStatuses: { [id: string]: string } = { ...previousStatuses };
@@ -191,7 +240,6 @@ export default function App() {
         for (const f of incomingFlights) {
           const prev = previousStatuses[f.id];
           if (prev && prev !== f.status && monitoredFlightIds.includes(f.id)) {
-            // Flight status changed!
             const alertItem: FlightStatusAlert = {
               id: `${f.id}_${Date.now()}`,
               flightId: f.id,
@@ -208,12 +256,10 @@ export default function App() {
 
             newAlerts.push(alertItem);
 
-            // Play chime
             if (soundEnabled) {
               playAirportChime();
             }
 
-            // Desktop browser notification
             if ('Notification' in window && Notification.permission === 'granted') {
               try {
                 new Notification(`Voo ${f.companyName} ${f.flight} - Mudança de Status!`, {
@@ -225,7 +271,6 @@ export default function App() {
               }
             }
 
-            // In-app banner
             showToast(`Voo ${f.companyName} ${f.flight}: Mudança de status para "${f.status}" às ${formatLiveTime()}`);
           }
 
@@ -255,15 +300,33 @@ export default function App() {
     fetchDollar();
     fetchFlights();
     fetchWeather();
-
-    // Auto-refresh flights & dollar every 30 seconds
-    const interval = setInterval(() => {
-      fetchDollar();
-      fetchFlights();
-    }, 30_000);
-
-    return () => clearInterval(interval);
   }, [fetchDollar, fetchFlights, fetchWeather]);
+
+  // Auto-refresh a cada 10 segundos com countdown visível
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setAutoRefreshCountdown(prev => {
+        if (prev <= 1) {
+          fetchDollar();
+          fetchFlights(true);
+          fetchWeather();
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [fetchDollar, fetchFlights, fetchWeather]);
+
+  // Manual refresh handler
+  const handleManualRefresh = () => {
+    setAutoRefreshCountdown(10);
+    fetchDollar();
+    fetchFlights(true);
+    fetchWeather();
+    showToast('Atualizando dados dos voos, dólar e meteorologia...');
+  };
 
   // Toggle flight notification
   const handleToggleNotify = (flight: FlightItem) => {
@@ -277,12 +340,10 @@ export default function App() {
       updated = [...monitoredFlightIds, flight.id];
       showToast(`🔔 Notificações ativadas para o voo ${flight.companyName} ${flight.flight}! Você será avisado quando o status mudar.`);
       
-      // If browser permission is default, ask for it nicely
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().then(p => setBrowserPermission(p));
       }
 
-      // Record current status as baseline
       setPreviousStatuses(prev => {
         const next = { ...prev, [flight.id]: flight.status };
         localStorage.setItem('bh_flight_statuses', JSON.stringify(next));
@@ -317,7 +378,6 @@ export default function App() {
     }
   };
 
-  // Simulate alert test
   const handleSimulateAlert = () => {
     const targetFlight = flights[0] || {
       id: 'test_2023',
@@ -346,16 +406,6 @@ export default function App() {
       playAirportChime();
     }
 
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(`[TESTE] Voo ${targetFlight.companyName} ${targetFlight.flight} - Mudança de Status!`, {
-          body: `Novo status: Embarque Próximo (${targetFlight.gate}) às ${formatLiveTime()}`,
-        });
-      } catch (e) {
-        console.warn(e);
-      }
-    }
-
     setAlerts(prev => {
       const updated = [simulatedAlert, ...prev];
       localStorage.setItem('bh_flight_alerts', JSON.stringify(updated));
@@ -365,15 +415,7 @@ export default function App() {
     showToast(`[TESTE] Voo ${targetFlight.companyName} ${targetFlight.flight}: Novo status: Embarque Próximo às ${formatLiveTime()}`);
   };
 
-  // Manual refresh handler
-  const handleManualRefresh = () => {
-    fetchDollar();
-    fetchFlights(true);
-    fetchWeather();
-    showToast('Atualizando dados dos voos, dólar e meteorologia...');
-  };
-
-  // Available airlines for filter
+  // Available airlines
   const availableAirlines = useMemo(() => {
     const set = new Set<string>();
     flights.forEach(f => {
@@ -382,20 +424,33 @@ export default function App() {
     return Array.from(set).sort();
   }, [flights]);
 
-  // Filtered flights
-  const filteredFlights = useMemo(() => {
+  // Lista de Voos da aba RIO: apenas Galeão e Santos Dumont, sem aeronaves decoladas
+  const rioFlights = useMemo(() => {
     return flights.filter(f => {
-      // Airport filter (ALL, GIG, SDU)
-      if (selectedAirport !== 'ALL' && f.destinationCode !== selectedAirport) {
+      // Somente voos para GIG ou SDU
+      if (f.destinationCode !== 'GIG' && f.destinationCode !== 'SDU') {
         return false;
       }
 
-      // Airline filter
+      // Remove voos já decolados
+      if (!isFlightNotDeparted(f, currentTimeMs)) {
+        return false;
+      }
+
+      // Filtro de aeroporto selecionado (TODOS RIO, GIG, SDU)
+      if (selectedAirport === 'GIG' && f.destinationCode !== 'GIG') {
+        return false;
+      }
+      if (selectedAirport === 'SDU' && f.destinationCode !== 'SDU') {
+        return false;
+      }
+
+      // Filtro de cia aérea
       if (selectedAirline !== 'ALL' && f.companyName !== selectedAirline) {
         return false;
       }
 
-      // Next 12 hours filter
+      // Filtro das próximas 12 horas
       if (showNext12HoursOnly && f.departureTimestamp > currentTimeMs + 12 * 60 * 60 * 1000) {
         return false;
       }
@@ -404,24 +459,47 @@ export default function App() {
     });
   }, [flights, selectedAirport, selectedAirline, showNext12HoursOnly, currentTimeMs]);
 
+  // Lista de Voos da aba TODOS: todo o painel de decolagens, sem voos já decolados
+  const allDepartures = useMemo(() => {
+    return flights.filter(f => {
+      // Remove voos já decolados
+      if (!isFlightNotDeparted(f, currentTimeMs)) {
+        return false;
+      }
+
+      // Filtro de cia aérea
+      if (selectedAirline !== 'ALL' && f.companyName !== selectedAirline) {
+        return false;
+      }
+
+      // Filtro das próximas 12 horas
+      if (showNext12HoursOnly && f.departureTimestamp > currentTimeMs + 12 * 60 * 60 * 1000) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [flights, selectedAirline, showNext12HoursOnly, currentTimeMs]);
+
+  const activeFlightsList = mainTab === 'RIO' ? rioFlights : allDepartures;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col selection:bg-sky-100 selection:text-sky-900">
-      {/* Header com hora atual, cotação do dólar e botão de atualização */}
+      {/* Header em uma linha única: Hora, Dólar (2 decimais), Botão Atualizar (10s countdown) e Links */}
       <Header
         currentTime={currentTime}
-        currentDate={currentDate}
         dollar={dollar}
         dollarLoading={dollarLoading}
         flightsLoading={flightsLoading}
         onRefresh={handleManualRefresh}
-        lastUpdatedTime={lastUpdatedTime}
+        autoRefreshCountdown={autoRefreshCountdown}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 space-y-3">
         {/* Toast Alert Banner */}
         {toastMessage && (
-          <div className="bg-sky-900 text-white px-4 py-2.5 rounded-xl shadow-md text-xs sm:text-sm font-medium flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="bg-sky-900 text-white px-3 py-2 rounded-xl shadow-md text-xs font-medium flex items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-2">
               <BellRing className="w-4 h-4 text-sky-300 animate-pulse shrink-0" />
               <span>{toastMessage}</span>
@@ -435,25 +513,90 @@ export default function App() {
           </div>
         )}
 
-        {/* Painel Principal de Voos (posicionado no início, logo abaixo do cabeçalho) */}
-        <div className="space-y-3">
-          {/* Barra de Filtros: TODOS RIO, GIG, SDU, CIA na mesma linha */}
-          <FlightFilters
-            selectedAirport={selectedAirport}
-            onSelectAirport={setSelectedAirport}
-            selectedAirline={selectedAirline}
-            onSelectAirline={setSelectedAirline}
-            availableAirlines={availableAirlines}
-          />
+        {/* Abas Principais: RIO (Padrão) e TODOS */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1">
+          <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg">
+            <button
+              type="button"
+              onClick={() => {
+                setMainTab('RIO');
+                setSelectedAirport('ALL');
+                setSelectedAirline('ALL');
+              }}
+              className={`px-3.5 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
+                mainTab === 'RIO'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              RIO
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMainTab('TODOS');
+                setSelectedAirline('ALL');
+              }}
+              className={`px-3.5 py-1 text-xs font-black rounded-md transition-all cursor-pointer ${
+                mainTab === 'TODOS'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              TODOS
+            </button>
+          </div>
+
+          <span className="text-[11px] font-semibold text-slate-500">
+            {mainTab === 'RIO' ? 'Confins (CNF) → Galeão & Santos Dumont' : 'Painel de Todas as Decolagens de Confins (CNF)'}
+          </span>
+        </div>
+
+        {/* Painel Principal de Voos */}
+        <div className="space-y-2.5">
+          {/* Barra de Filtros: na aba RIO tem TODOS RIO, GIG, SDU e CIA na mesma linha; na aba TODOS tem CIA */}
+          {mainTab === 'RIO' ? (
+            <FlightFilters
+              selectedAirport={selectedAirport}
+              onSelectAirport={setSelectedAirport}
+              selectedAirline={selectedAirline}
+              onSelectAirline={setSelectedAirline}
+              availableAirlines={availableAirlines}
+            />
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200/90 p-2 sm:p-2.5 shadow-2xs flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-700">
+                Todas as Decolagens (ordem por horário)
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-slate-700 font-bold">CIA:</span>
+                <select
+                  value={selectedAirline}
+                  onChange={(e) => setSelectedAirline(e.target.value)}
+                  className="px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:outline-hidden focus:border-sky-500 cursor-pointer"
+                >
+                  <option value="ALL">Todas as Cias</option>
+                  {availableAirlines.map((airline) => (
+                    <option key={airline} value={airline}>
+                      {airline}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Tabela de Voos */}
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden">
-            {/* Header da Lista de Voos: sem exibir contagem de voos encontrados */}
-            <div className="px-4 sm:px-6 py-2.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2">
+            {/* Header da Lista de Voos: frase 'mais cedo no topo' removida */}
+            <div className="px-3 sm:px-4 py-2 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
                 <span className="font-bold text-slate-800">
-                  Partidas ordenadas por horário (mais cedo no topo)
+                  Partidas ordenadas por horário
                 </span>
               </div>
 
@@ -481,55 +624,52 @@ export default function App() {
 
             {/* Linhas de Voos */}
             {flightsLoading && flights.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
-                <RefreshCw className="w-8 h-8 text-sky-500 animate-spin mx-auto mb-3" />
+              <div className="p-10 text-center text-slate-400">
+                <RefreshCw className="w-7 h-7 text-sky-500 animate-spin mx-auto mb-2" />
                 <p className="text-sm font-medium text-slate-600">
-                  Carregando voos em tempo real de Confins para o Rio...
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Consultando painel oficial de partidas do BH Airport (bh-airport.com.br)
+                  Carregando voos em tempo real do BH Airport...
                 </p>
               </div>
-            ) : filteredFlights.length === 0 ? (
-              <div className="p-12 text-center text-slate-500">
+            ) : activeFlightsList.length === 0 ? (
+              <div className="p-10 text-center text-slate-500">
                 <Plane className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-medium text-slate-700">
-                  Nenhum voo encontrado com os filtros atuais.
+                  Nenhum voo previsto no momento com os filtros atuais.
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Tente alterar os termos de busca ou desativar o filtro "Ocultar decolados".
-                </p>
-                {(searchQuery || selectedAirline !== 'ALL' || filterOnlyMonitored || hideDeparted) && (
+                {selectedAirline !== 'ALL' && (
                   <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedAirline('ALL');
-                      setFilterOnlyMonitored(false);
-                      setHideDeparted(false);
-                      setSelectedAirport('ALL');
-                    }}
-                    className="mt-3 px-3 py-1.5 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md transition-colors cursor-pointer"
+                    onClick={() => setSelectedAirline('ALL')}
+                    className="mt-2.5 px-3 py-1 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md transition-colors cursor-pointer"
                   >
-                    Limpar todos os filtros
+                    Mostrar todas as Cias
                   </button>
                 )}
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {filteredFlights.map((flight, idx) => (
-                  <FlightRow
-                    key={`${flight.id}-${idx}`}
-                    flight={flight}
-                    currentTimeMs={currentTimeMs}
-                    isNotified={monitoredFlightIds.includes(flight.id)}
-                    onToggleNotify={handleToggleNotify}
-                  />
-                ))}
+                {mainTab === 'RIO'
+                  ? rioFlights.map((flight, idx) => (
+                      <FlightRow
+                        key={`rio-${flight.id}-${idx}`}
+                        flight={flight}
+                        currentTimeMs={currentTimeMs}
+                        isNotified={monitoredFlightIds.includes(flight.id)}
+                        onToggleNotify={handleToggleNotify}
+                      />
+                    ))
+                  : allDepartures.map((flight, idx) => (
+                      <AllFlightsRow
+                        key={`all-${flight.id}-${idx}`}
+                        flight={flight}
+                        isNotified={monitoredFlightIds.includes(flight.id)}
+                        onToggleNotify={handleToggleNotify}
+                      />
+                    ))}
               </div>
             )}
 
             {/* Rodapé da tabela: aviso das próximas 12hrs */}
-            <div className="px-4 py-2.5 border-t border-slate-200 bg-slate-50/80 text-center">
+            <div className="px-4 py-2 border-t border-slate-200 bg-slate-50/80 text-center">
               <button
                 type="button"
                 onClick={() => setShowNext12HoursOnly(!showNext12HoursOnly)}
@@ -559,12 +699,10 @@ export default function App() {
       </main>
 
       {/* Footer simples e limpo */}
-      <footer className="mt-8 border-t border-slate-200 bg-white py-4 text-xs text-slate-500">
+      <footer className="mt-6 border-t border-slate-200 bg-white py-3.5 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <div>
-            <span>Painel Confins (CNF) → Rio de Janeiro (Galeão GIG / Santos Dumont SDU)</span>
-            <span className="hidden sm:inline"> · </span>
-            <span className="block sm:inline text-slate-400">Atualizado com fontes públicas oficiais</span>
+            <span>Painel de Partidas Confins (CNF) · bh-airport.com.br</span>
           </div>
           <div className="flex items-center justify-center gap-3">
             <a
