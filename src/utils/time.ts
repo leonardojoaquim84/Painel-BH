@@ -90,34 +90,27 @@ export function getFlightCountdown(
     };
   }
 
-  // Imminent departure (under 25 minutes)
+  // Apenas horas e minutos faltantes
   const hours = Math.floor(diffSec / 3600);
   const minutes = Math.floor((diffSec % 3600) / 60);
-  const seconds = diffSec % 60;
 
   const pad = (n: number) => n.toString().padStart(2, '0');
 
+  // Formato: se mais de 1 hora "01h 24m", se menos de 1 hora "24m" (ou "00m" se faltar menos de 1 minuto)
+  const countdownText = hours > 0 ? `${pad(hours)}h ${pad(minutes)}m` : `${pad(minutes)}m`;
+
   if (diffSec < 1500) {
-    // Under 25 min: imminent
+    // Menos de 25 min: iminente
     return {
-      text: `${pad(minutes)}m ${pad(seconds)}s`,
+      text: countdownText,
       subtext: 'Embarque final',
       statusType: 'imminent',
       diffSeconds: diffSec,
     };
   }
 
-  if (hours > 0) {
-    return {
-      text: `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`,
-      subtext: 'Falta p/ decolar',
-      statusType: 'future',
-      diffSeconds: diffSec,
-    };
-  }
-
   return {
-    text: `${pad(minutes)}m ${pad(seconds)}s`,
+    text: countdownText,
     subtext: 'Falta p/ decolar',
     statusType: 'future',
     diffSeconds: diffSec,

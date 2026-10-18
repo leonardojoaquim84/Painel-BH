@@ -12,6 +12,86 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        // Suppress Vite HMR WebSocket errors in AI Studio iframe/preview environment
+        var origConsoleError = console.error;
+        console.error = function() {
+          var msg = '';
+          for (var i = 0; i < arguments.length; i++) {
+            var arg = arguments[i];
+            msg += (arg && (arg.message || arg.stack || String(arg))) + ' ';
+          }
+          if (
+            msg.indexOf('failed to connect to websocket') !== -1 ||
+            msg.indexOf('WebSocket closed without opened') !== -1 ||
+            msg.indexOf('@vite/client') !== -1
+          ) {
+            return;
+          }
+          origConsoleError.apply(console, arguments);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          var msg = (reason && (reason.message || reason.stack || String(reason))) || '';
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            msg.indexOf('closed without opened') !== -1 ||
+            msg.indexOf('@vite/client') !== -1
+          ) {
+            event.preventDefault();
+            if (typeof event.stopImmediatePropagation === 'function') {
+              event.stopImmediatePropagation();
+            }
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          var msg = (event && (event.message || '')) || '';
+          var filename = (event && event.filename) || '';
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            msg.indexOf('closed without opened') !== -1 ||
+            filename.indexOf('@vite/client') !== -1
+          ) {
+            event.preventDefault();
+            if (typeof event.stopImmediatePropagation === 'function') {
+              event.stopImmediatePropagation();
+            }
+          }
+        }, true);
+
+        // Intercept Vite HMR WebSocket so it opens smoothly and never throws
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var RealWebSocket = window.WebSocket;
+          window.WebSocket = function(url, protocols) {
+            var sUrl = String(url || '');
+            var sProto = String(protocols || '');
+            if (sUrl.indexOf('vite-hmr') !== -1 || sProto.indexOf('vite-hmr') !== -1 || sUrl.indexOf('token=') !== -1) {
+              var dummy = new EventTarget();
+              dummy.readyState = 1; // OPEN
+              dummy.url = sUrl;
+              dummy.protocol = sProto;
+              dummy.send = function() {};
+              dummy.close = function() {
+                dummy.readyState = 3; // CLOSED
+              };
+              setTimeout(function() {
+                dummy.dispatchEvent(new Event('open'));
+              }, 0);
+              return dummy;
+            }
+            return new RealWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = RealWebSocket.prototype;
+          window.WebSocket.CONNECTING = RealWebSocket.CONNECTING;
+          window.WebSocket.OPEN = RealWebSocket.OPEN;
+          window.WebSocket.CLOSING = RealWebSocket.CLOSING;
+          window.WebSocket.CLOSED = RealWebSocket.CLOSED;
+        }
+      })();
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-800 antialiased font-['Plus_Jakarta_Sans',sans-serif]">
     <div id="root"></div>

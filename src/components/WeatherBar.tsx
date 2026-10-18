@@ -46,14 +46,29 @@ export const WeatherBar: React.FC<WeatherBarProps> = ({ weatherList }) => {
       setSearching(true);
       setSearchError(null);
 
-      // Tenta buscar no endpoint oficial da aviationweather.gov
-      const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${clean}&format=json`);
+      // 1. Tenta buscar pelo endpoint do servidor /api/metar (resolve IATA e ICAO)
+      const res = await fetch(`/api/metar?icao=${encodeURIComponent(clean)}`);
       if (res.ok) {
-        const data = await res.json();
+        const j = await res.json();
+        if (j.success && j.data && j.data.metar) {
+          setSearchedResult({
+            icao: j.data.icao || clean,
+            metar: j.data.metar,
+            fltCat: (j.data.fltCat || 'VFR').toUpperCase(),
+          });
+          return;
+        }
+      }
+
+      // 2. Fallback direto caso o endpoint local falhe
+      const queryCode = clean.length === 3 ? `SB${clean},${clean}` : clean;
+      const directRes = await fetch(`https://aviationweather.gov/api/data/metar?ids=${queryCode}&format=json`);
+      if (directRes.ok) {
+        const data = await directRes.json();
         if (Array.isArray(data) && data.length > 0) {
           const item = data[0];
           setSearchedResult({
-            icao: clean,
+            icao: item.icaoId || clean,
             metar: item.rawOb || `METAR ${clean} indisponível`,
             fltCat: (item.fltCat || 'VFR').toUpperCase(),
           });
@@ -61,7 +76,7 @@ export const WeatherBar: React.FC<WeatherBarProps> = ({ weatherList }) => {
         }
       }
 
-      setSearchError(`METAR não encontrado para o aeroporto ${clean}.`);
+      setSearchError(`METAR não encontrado para "${clean}". Digite o código ICAO (ex: SBGR, SBSP, SBBR) ou IATA (ex: GRU, CGH, BSB).`);
       setSearchedResult(null);
     } catch {
       setSearchError(`Não foi possível carregar o METAR de ${clean}. Verifique a conexão.`);
@@ -104,8 +119,8 @@ export const WeatherBar: React.FC<WeatherBarProps> = ({ weatherList }) => {
               type="text"
               value={searchIcao}
               onChange={(e) => setSearchIcao(e.target.value.toUpperCase())}
-              placeholder="Pesquisar METAR de outro aeroporto (código ICAO: ex. SBGR, SBSP, SBBR, SBPA, KJFK)..."
-              maxLength={5}
+              placeholder="Pesquisar METAR de outro aeroporto (código ICAO ou IATA: ex. SBGR, GRU, SBSP, CGH, BSB, KJFK)..."
+              maxLength={6}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg placeholder-slate-400 font-mono uppercase focus:outline-hidden focus:bg-white focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30 transition-all font-semibold"
             />
           </div>

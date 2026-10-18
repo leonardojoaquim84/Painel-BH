@@ -1,5 +1,6 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -346,6 +347,132 @@ interface AirportWeather {
 
 let cachedWeather: { data: AirportWeather[]; timestamp: number } | null = null;
 
+const IATA_TO_ICAO_MAP: Record<string, string> = {
+  GRU: 'SBGR', CGH: 'SBSP', BSB: 'SBBR', CNF: 'SBCF', GIG: 'SBGL', SDU: 'SBRJ',
+  VCP: 'SBKP', POA: 'SBPA', CWB: 'SBCT', SSA: 'SBSV', REC: 'SBRF', FOR: 'SBFZ',
+  BEL: 'SBBE', MAO: 'SBEG', FLN: 'SBFL', VIX: 'SBVT', NAT: 'SBSG', MCZ: 'SBMO',
+  JPA: 'SBJP', AJU: 'SBAR', SLZ: 'SBSL', CGB: 'SBCY', GYN: 'SBGO', BPS: 'SBPB',
+  UDI: 'SBUL', NVT: 'SBNF', RAO: 'SBRP', IGU: 'SBFI', JDO: 'SBJU', IOS: 'SBIL',
+  MOC: 'SBMK', MGF: 'SBMG', LDB: 'SBLO', XAP: 'SBCH', CXJ: 'SBCX', PET: 'SBPK',
+  JOI: 'SBJV', PMW: 'SBPW', PVH: 'SBPV', RBR: 'SBRB', BVB: 'SBBV', MCP: 'SBMQ',
+  THE: 'SBTE', IMP: 'SBIZ', PNZ: 'SBPL', CPV: 'SBKG', CPQ: 'SBKP', PLU: 'SBBH',
+  JFK: 'KJFK', MIA: 'KMIA', MCO: 'KMCO', LAX: 'KLAX', ORD: 'KORD', ATL: 'KATL',
+  EWR: 'KEWR', BOS: 'KBOS', SFO: 'KSFO', IAD: 'KIAD', DFW: 'KDFW', IAH: 'KIAH',
+  LIS: 'LPPT', OPO: 'LPPR', MAD: 'LEMD', CDG: 'LFPG', ORY: 'LFPO', LHR: 'EGLL',
+  EZE: 'SAEZ', AEP: 'SABE', SCL: 'SCEL', MVD: 'SUMU', BOG: 'SKBO', LIM: 'SPJC',
+};
+
+async function fetchSingleAirportMetar(query: string) {
+  const clean = query.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!clean) return null;
+
+  const codesToTry: string[] = [];
+  if (clean.length === 4) {
+    codesToTry.push(clean);
+  } else if (clean.length === 3) {
+    if (IATA_TO_ICAO_MAP[clean]) codesToTry.push(IATA_TO_ICAO_MAP[clean]);
+    codesToTry.push(`SB${clean}`);
+    codesToTry.push(`K${clean}`);
+    codesToTry.push(clean);
+  } else {
+    codesToTry.push(clean);
+  }
+
+  const uniqueCodes = Array.from(new Set(codesToTry));
+  const queryParam = uniqueCodes.join(',');
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${queryParam}&format=json`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const item = data[0];
+        const rawMetar = item.rawOb || `METAR ${item.icaoId}`;
+        const fltCat = (item.fltCat || (rawMetar.includes('BKN01') || rawMetar.includes('OVC01') ? 'MVFR' : 'VFR')).toUpperCase();
+        return {
+          icao: item.icaoId || uniqueCodes[0],
+          name: item.name || item.icaoId,
+          metar: rawMetar,
+          fltCat,
+          temperature: typeof item.temp === 'number' ? item.temp : undefined,
+          windSpeed: typeof item.wspd === 'number' ? Math.round(item.wspd * 1.852) : undefined,
+          windDir: item.wdir,
+          altimeter: item.altim,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn(`Error querying aviationweather.gov for ${clean}:`, err);
+  }
+
+  // Fallback 1: aviationweather.gov raw text
+  for (const c of uniqueCodes) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${c}&format=raw`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const text = await res.text();
+        const trimmed = text.trim();
+        if (trimmed && (trimmed.includes(c) || trimmed.startsWith('METAR'))) {
+          let fltCat = 'VFR';
+          if (trimmed.includes('OVC00') || trimmed.includes('BKN00') || trimmed.includes('OVC010')) fltCat = 'IFR';
+          else if (trimmed.includes('BKN01') || trimmed.includes('OVC01') || trimmed.includes('SCT010')) fltCat = 'MVFR';
+          return {
+            icao: c,
+            name: c,
+            metar: trimmed.startsWith('METAR') ? trimmed : `METAR ${trimmed}`,
+            fltCat,
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // Fallback 2: NOAA tgftp
+  for (const c of uniqueCodes) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`https://tgftp.nws.noaa.gov/data/observations/metar/stations/${c}.TXT`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const text = await res.text();
+        const lines = text.trim().split('\n');
+        const metarLine = lines.length > 1 ? lines[1].trim() : lines[0].trim();
+        if (metarLine && metarLine.includes(c)) {
+          let fltCat = 'VFR';
+          if (metarLine.includes('OVC00') || metarLine.includes('BKN00')) fltCat = 'IFR';
+          else if (metarLine.includes('BKN01') || metarLine.includes('OVC01')) fltCat = 'MVFR';
+          return {
+            icao: c,
+            name: c,
+            metar: metarLine.startsWith('METAR') ? metarLine : `METAR ${metarLine}`,
+            fltCat,
+          };
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 async function fetchAirportsWeather(): Promise<AirportWeather[]> {
   const now = Date.now();
   if (cachedWeather && now - cachedWeather.timestamp < 90_000) {
@@ -453,6 +580,29 @@ app.get('/api/weather', async (_req: Request, res: Response) => {
   }
 });
 
+// Endpoint para busca de METAR de qualquer aeroporto (ICAO ou IATA)
+app.get('/api/metar', async (req: Request, res: Response) => {
+  try {
+    const rawQuery = (req.query.icao || req.query.code || req.query.q || '') as string;
+    const clean = rawQuery.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!clean) {
+      return res.status(400).json({ success: false, error: 'Código do aeroporto é obrigatório' });
+    }
+
+    const result = await fetchSingleAirportMetar(clean);
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: `METAR não encontrado para o aeroporto ${clean}.`,
+      });
+    }
+
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/flights', async (req: Request, res: Response) => {
   try {
     const fresh = req.query.fresh === 'true';
@@ -484,7 +634,10 @@ async function startServer() {
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

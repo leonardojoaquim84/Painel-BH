@@ -646,6 +646,20 @@ export default function App() {
               </div>
             </div>
 
+            {/* Cabeçalho de colunas alinhadas verticalmente para a aba TODOS */}
+            {mainTab === 'TODOS' && activeFlightsList.length > 0 && (
+              <div className="px-2 sm:px-3 py-1 bg-slate-100/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center justify-between gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <div className="w-14 sm:w-16 shrink-0">Hora</div>
+                  <div className="w-18 sm:w-20 shrink-0">Voo</div>
+                  <div className="w-36 sm:w-52 md:w-64 shrink-0">Destino</div>
+                  <div className="w-12 sm:w-14 shrink-0 text-center">Portão</div>
+                  <div className="shrink-0">Status</div>
+                </div>
+                <div className="shrink-0 text-right pr-1">Avisos</div>
+              </div>
+            )}
+
             {/* Linhas de Voos */}
             {flightsLoading && flights.length === 0 ? (
               <div className="p-10 text-center text-slate-400">

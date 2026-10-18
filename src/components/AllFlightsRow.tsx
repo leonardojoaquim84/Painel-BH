@@ -89,7 +89,7 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
       >
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* 1. Hora */}
-          <div className="shrink-0 flex items-center gap-1 font-black text-slate-900 font-mono tabular-nums text-xs sm:text-sm">
+          <div className="w-14 sm:w-16 shrink-0 flex items-center gap-1 font-black text-slate-900 font-mono tabular-nums text-xs sm:text-sm">
             <span>{flight.scheduled}</span>
             {flight.dateLabel && flight.dateLabel !== 'Hoje' && (
               <span className="text-[8px] font-bold text-sky-700 bg-sky-50 px-0.5 rounded border border-sky-100">
@@ -99,7 +99,7 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
           </div>
 
           {/* 2. Cia (Logotipo e número do voo, sem o nome da cia) */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="w-18 sm:w-20 shrink-0 flex items-center gap-1">
             {flight.companyLogoUrl ? (
               <img
                 src={flight.companyLogoUrl}
@@ -115,20 +115,20 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
                 <Plane className="w-2.5 h-2.5" />
               </div>
             )}
-            <span className="font-mono text-slate-900 font-black text-xs tabular-nums">
+            <span className="font-mono text-slate-900 font-black text-xs tabular-nums truncate">
               {flight.flight}
             </span>
           </div>
 
-          {/* 3. Destino logo ao lado com espaçamento reduzido */}
-          <div className="shrink-0 max-w-[140px] sm:max-w-[220px] truncate">
-            <span className="font-semibold text-slate-800 text-xs truncate">
+          {/* 3. Destino com largura fixa para alinhar os portões de embarque verticalmente */}
+          <div className="w-36 sm:w-52 md:w-64 shrink-0 truncate">
+            <span className="font-semibold text-slate-800 text-xs truncate" title={flight.destination}>
               {flight.destination}
             </span>
           </div>
 
-          {/* 4. Portão de embarque com cor marrom bem claro */}
-          <div className="shrink-0 flex items-center justify-center font-mono font-bold text-[11px] bg-[#fbf4eb] text-[#854d0e] border border-[#ebd9c6] px-1.5 py-0.5 rounded">
+          {/* 4. Portão de embarque alinhado verticalmente */}
+          <div className="w-12 sm:w-14 shrink-0 flex items-center justify-center font-mono font-bold text-[11px] bg-[#fbf4eb] text-[#854d0e] border border-[#ebd9c6] px-1 py-0.5 rounded text-center">
             {gateNumber}
           </div>
 
