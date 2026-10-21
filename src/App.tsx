@@ -36,7 +36,7 @@ function isFlightNotDeparted(flight: FlightItem, currentTimeMs: number): boolean
   }
   // Se o horário previsto já passou há mais de 10 minutos e o status não é de atraso ou embarque
   if (flight.departureTimestamp && currentTimeMs - flight.departureTimestamp > 10 * 60 * 1000) {
-    if (!s.includes('atras') && !s.includes('embarque') && !s.includes('aguardando')) {
+    if (!s.includes('atras') && !s.includes('embarque') && !s.includes('aguardando') && !s.includes('dirija') && !s.includes('chamada')) {
       return false;
     }
   }

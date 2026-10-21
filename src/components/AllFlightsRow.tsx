@@ -45,10 +45,29 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
         </span>
       );
     }
+    // Última chamada em vermelho (tom pastel bem claro)
+    if (s.includes('última') || s.includes('ultima') || s.includes('chamada')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-red-50 text-red-800 border border-red-200 shrink-0">
+          <AlertCircle className="w-3 h-3 text-red-500 animate-pulse" />
+          <span>{flight.status}</span>
+        </span>
+      );
+    }
+    // Embarque em amarelo (tom pastel)
     if (s.includes('embarque')) {
       return (
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span>{flight.status}</span>
+        </span>
+      );
+    }
+    // Dirija-se ao portão em verde (tom pastel)
+    if (s.includes('dirija') || s.includes('dirigir') || s.includes('ao port') || (s.includes('port') && !s.includes('embarque') && !s.includes('decolou') && !s.includes('partiu') && !s.includes('atras') && !s.includes('cancel'))) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
           <span>{flight.status}</span>
         </span>
       );
@@ -61,9 +80,10 @@ export const AllFlightsRow: React.FC<AllFlightsRowProps> = ({
         </span>
       );
     }
+    // Previsto em azul (tom pastel)
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-sky-50 text-sky-800 border border-sky-200 shrink-0">
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
         <span>{flight.status || 'Previsto'}</span>
       </span>
     );
